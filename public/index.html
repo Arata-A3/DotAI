@@ -17,7 +17,7 @@
 
   <main>
     <!-- 左: 生成設定 -->
-    <section class="panel left">
+    <section class="panel left" id="leftPanel">
       <div class="left-scroll">
         <details class="sec" open>
           <summary>何を描く？</summary>
@@ -111,9 +111,9 @@
         </div>
         <div class="group" id="tools">
           <button data-tool="pen" class="active" title="ペン (B)">✎ ペン</button>
-          <button data-tool="eraser" title="消しゴム (E)　※右クリックでも消せます">⌫ 消しゴム</button>
+          <button data-tool="eraser" title="消しゴム (E)">⌫ 消しゴム</button>
           <button data-tool="fill" title="塗りつぶし (G)">▨ 塗り</button>
-          <button data-tool="picker" title="スポイト (I)">⦿ スポイト</button>
+          <button data-tool="picker" title="スポイト (I)　※どのツールでも右クリックで色を拾えます">⦿ スポイト</button>
           <button data-tool="line" title="直線定規 (L)　クリックで点を打ち続け、ダブルクリック（Enter）で確定。Shiftで0°/45°/90°に固定、Backspaceで1点戻す、Escで取り消し">╱ 直線</button>
           <button data-tool="curve" title="曲線定規 (C)　クリックで点を打ち続けると全点を通る曲線になり、ダブルクリック（Enter）で確定。Backspaceで1点戻す、Escで取り消し">⌒ 曲線</button>
         </div>

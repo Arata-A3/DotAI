@@ -327,8 +327,8 @@ export class Editor {
         this.shape.downAt = cell;
         return this.render();
       }
-      // 右クリックは一時的に消しゴム
-      const tool = e.button === 2 ? "eraser" : this.tool;
+      // 右クリックは一時的にスポイト
+      const tool = e.button === 2 ? "picker" : this.tool;
       if (tool === "picker") {
         const v = this.grid.pixels[cell.y * this.doc.width + cell.x];
         if (v >= 0) {

@@ -45,7 +45,11 @@ const editor = new Editor($("canvas"), {
     previewVersion++;
     updateInfo();
   },
-  onPick: () => renderEditorPalette(),
+  // 消しゴム中に右クリックで色を拾ったら、そのまま描けるようペンに切り替える
+  onPick: () => {
+    if (editor.tool === "eraser") setTool("pen");
+    renderEditorPalette();
+  },
   // タイトルや履歴IDも Undo/Redo で絵と一緒に戻す（戻したあとの上書き保存で別の絵を消さないため）
   getMeta: () => ({ ...current }),
   setMeta: (m) => {
@@ -476,6 +480,43 @@ function pickColor(initial, cb) {
 $("palette").addEventListener("change", renderPaletteSwatches);
 $("maxColors").addEventListener("input", () => ($("maxColorsOut").textContent = $("maxColors").value));
 
+/* ---------- 入力内容の保存・復元（再起動してもプロンプト等が消えないように） ---------- */
+const FORM_KEY = "dotai.form";
+const FORM_IDS = [
+  "prompt", "width", "height", "square", "maxColors",
+  "stTransparent", "stSymmetry", "stOutline", "stTileable", "stDither",
+  "variations", "motion", "frameCount",
+];
+
+function saveForm() {
+  const data = { template: $("template").value, palette: $("palette").value, fields: {} };
+  for (const id of FORM_IDS) data[id] = $(id).type === "checkbox" ? $(id).checked : $(id).value;
+  document.querySelectorAll("#templateFields input").forEach((i) => (data.fields[i.dataset.key] = i.value));
+  storage.set(FORM_KEY, data);
+}
+
+function restoreForm() {
+  const data = storage.get(FORM_KEY, null);
+  if (!data) return;
+  const hasOption = (sel, v) => [...$(sel).options].some((o) => o.value === v);
+  // テンプレ → 各項目 → パレット → その他（プロンプトは最後に戻して、自動作成で上書きされないようにする）
+  if (hasOption("template", data.template)) {
+    $("template").value = data.template;
+    renderTemplateFields(false);
+  }
+  document.querySelectorAll("#templateFields input").forEach((i) => (i.value = data.fields?.[i.dataset.key] ?? ""));
+  if (hasOption("palette", data.palette)) {
+    $("palette").value = data.palette;
+    renderPaletteSwatches();
+  }
+  for (const id of FORM_IDS) {
+    if (data[id] === undefined) continue;
+    if ($(id).type === "checkbox") $(id).checked = data[id];
+    else if ($(id).tagName !== "SELECT" || hasOption(id, data[id])) $(id).value = data[id];
+  }
+  $("maxColorsOut").textContent = $("maxColors").value;
+}
+
 function readForm() {
   const { width, height } = readSize();
   return {
@@ -849,7 +890,10 @@ renderTemplateSelect();
 renderPaletteSelect();
 renderPaletteSwatches();
 renderTemplateFields(false);
+restoreForm();
 highlightSizePreset();
+// 左パネルの入力が変わるたびに保存（サイズのプリセットボタン等はクリックで値が変わるので click も見る）
+for (const type of ["input", "change", "click"]) $("leftPanel").addEventListener(type, saveForm);
 editor.setGrid(px.emptyGrid(32, 32), { keepHistory: false });
 setTool("pen");
 requestAnimationFrame(previewLoop);
