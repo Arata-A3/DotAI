@@ -768,7 +768,12 @@ function renderSettingsForm() {
     // モデルは一覧から選ぶ。一覧にないものは「その他（手入力）」
     const modelSel = el("select", { name: "modelSelect" });
     const custom = el("input", { type: "text", name: "model", value: p.model, placeholder: "モデル名を入力" });
-    const fillModels = (models) => {
+    // replaceUnknown: 保存中のモデルが一覧にない（提供終了など）場合、一覧の先頭に差し替える
+    const fillModels = (models, replaceUnknown = false) => {
+      if (replaceUnknown && models.length && !models.some((m) => m.id === custom.value)) {
+        modelNote.textContent = custom.value ? `「${custom.value}」は使えないため「${models[0].id}」に変更しました（保存で反映）` : "";
+        custom.value = models[0].id;
+      }
       const known = models.some((m) => m.id === custom.value);
       modelSel.replaceChildren(
         ...models.map((m) => el("option", { value: m.id, textContent: m.label, selected: m.id === custom.value })),
@@ -781,24 +786,23 @@ function renderSettingsForm() {
       if (modelSel.value === "__custom") custom.focus();
       else custom.value = modelSel.value;
     };
+    const modelNote = el("div", { className: "hint" });
     fillModels(p.models);
-    const modelLabel = el("label", { textContent: "モデル" }, [modelSel, custom]);
-    form.append(modelLabel);
-    if (k === "ollama") {
-      const note = el("div", { className: "hint" });
-      modelLabel.append(note);
-      const load = () => {
-        const baseUrl = form.querySelector('[name="baseUrl"]').value;
-        api(`/api/ollama-models?baseUrl=${encodeURIComponent(baseUrl)}`)
-          .then((models) => {
-            fillModels(models);
-            note.textContent = models.length ? "" : "インストール済みのモデルがありません（ollama pull で追加）";
-          })
-          .catch(() => (note.textContent = "Ollama に接続できません。起動しているか確認してください"));
-      };
-      form.querySelector('[name="baseUrl"]').addEventListener("change", load);
-      load();
-    }
+    form.append(el("label", { textContent: "モデル" }, [modelSel, custom, modelNote]));
+    // 各社から実際に使えるモデルを取得して選択肢を差し替える
+    const loadModels = () => {
+      const baseUrl = form.querySelector('[name="baseUrl"]')?.value;
+      modelNote.textContent = "使えるモデルを取得中…";
+      api(`/api/models?provider=${k}${baseUrl ? `&baseUrl=${encodeURIComponent(baseUrl)}` : ""}`)
+        .then((models) => {
+          const empty = k === "ollama" ? "インストール済みのモデルがありません（ollama pull で追加）" : "使えるモデルがありません";
+          modelNote.textContent = models.length ? "" : empty;
+          fillModels(models, true);
+        })
+        .catch((err) => (modelNote.textContent = k === "ollama" ? "Ollama に接続できません。起動しているか確認してください" : err.message));
+    };
+    form.querySelector('[name="baseUrl"]')?.addEventListener("change", loadModels);
+    loadModels();
     if (k === "claude") {
       const sel = el("select", { name: "effort" }, ["low", "medium", "high", "xhigh", "max"].map((v) =>
         el("option", { value: v, textContent: v, selected: v === (p.effort || "medium") })));

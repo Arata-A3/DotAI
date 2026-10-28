@@ -6,7 +6,7 @@ import { exec } from "node:child_process";
 import {
   buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, gridToRows, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
 } from "./lib/prompt.js";
-import { callProvider, listOllamaModels, PROVIDERS } from "./lib/providers.js";
+import { callProvider, listModels, PROVIDERS } from "./lib/providers.js";
 import * as store from "./lib/storage.js";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -87,10 +87,13 @@ const server = http.createServer(async (req, res) => {
       if (req.method === "POST") return send(res, 200, store.publicSettings(await store.saveSettings(await readBody(req))));
     }
 
-    if (p === "/api/ollama-models" && req.method === "GET") {
-      const settings = await store.loadSettings();
-      const baseUrl = url.searchParams.get("baseUrl") || settings.providers.ollama.baseUrl;
-      return send(res, 200, await listOllamaModels(baseUrl));
+    // 実際に使えるモデルの一覧（各社のAPIキー、Ollama はPC内のモデルから取得）
+    if (p === "/api/models" && req.method === "GET") {
+      const provider = url.searchParams.get("provider");
+      if (!PROVIDERS[provider]) return send(res, 400, { error: "不明なプロバイダーです" });
+      const cfg = store.providerConfig(await store.loadSettings(), provider);
+      if (url.searchParams.get("baseUrl")) cfg.baseUrl = url.searchParams.get("baseUrl");
+      return send(res, 200, await listModels(provider, cfg));
     }
 
     if (p === "/api/history") {
