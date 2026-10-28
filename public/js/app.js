@@ -46,6 +46,13 @@ const editor = new Editor($("canvas"), {
     updateInfo();
   },
   onPick: () => renderEditorPalette(),
+  // タイトルや履歴IDも Undo/Redo で絵と一緒に戻す（戻したあとの上書き保存で別の絵を消さないため）
+  getMeta: () => ({ ...current }),
+  setMeta: (m) => {
+    current = { ...m };
+    renderHistoryHighlight();
+    renderCandidates();
+  },
 });
 
 function updateInfo() {
@@ -264,21 +271,29 @@ $("newCanvas").onclick = () => {
   const colors = selectedPaletteColors();
   const g = px.emptyGrid(width, height);
   if (colors.length) g.palette = [...colors];
-  current = { id: null, title: "", prompt: "" };
-  editor.setGrid(g);
-  renderHistoryHighlight();
+  editor.setGrid(g, { meta: { id: null, title: "", prompt: "" } });
+};
+
+// 画像を読み込むときのサイズの決め方（設定画面で選択）
+const IMPORT_MODES = {
+  fit: "比率を保って収める（余白は透明）",
+  stretch: "今のサイズ設定に引き伸ばす（比率は変わる）",
+  original: "元の画像サイズのまま（最大128px）",
+};
+const importMode = () => {
+  const m = storage.get("dotai.importMode", "fit");
+  return IMPORT_MODES[m] ? m : "fit";
 };
 
 $("importFile").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const { width, height } = readSize();
-  const g = await px.imageToGrid(file, width, height, +$("maxColors").value);
-  current = { id: null, title: file.name.replace(/\.\w+$/, ""), prompt: "" };
-  editor.setGrid(g);
-  renderHistoryHighlight();
+  const mode = importMode();
+  const g = await px.imageToGrid(file, width, height, +$("maxColors").value, mode);
+  editor.setGrid(g, { meta: { id: null, title: file.name.replace(/\.\w+$/, ""), prompt: "" } });
   e.target.value = "";
-  setStatus(`${file.name} を ${width}×${height} で読み込みました`);
+  setStatus(`${file.name} を ${g.width}×${g.height}（${IMPORT_MODES[mode]}）で読み込みました`);
 });
 
 /* ---------- プレビュー（複数コマなら再生） ---------- */
@@ -524,7 +539,7 @@ async function generate(refine) {
           // 最初に届いた案をすぐキャンバスに表示する
           if (!loaded) {
             loaded = true;
-            loadCandidate(cand, !!refine);
+            loadCandidate(cand);
           }
         })
         .catch((err) => errors.push(err.message))
@@ -541,11 +556,8 @@ async function generate(refine) {
 $("generate").onclick = () => generate(false);
 $("refine").onclick = () => generate(true);
 
-function loadCandidate(c, keepHistory = false) {
-  current = { ...c.meta };
-  editor.setDoc(c.doc, { keepHistory });
-  renderHistoryHighlight();
-  renderCandidates();
+function loadCandidate(c) {
+  editor.setDoc(c.doc, { meta: { ...c.meta } });
 }
 
 function renderCandidates() {
@@ -557,7 +569,7 @@ function renderCandidates() {
     const card = el("div", { className: "item" + (c.meta.id === current.id ? " current" : ""), title: c.meta.title }, [
       img, el("div", { className: "title", textContent: `案${i + 1}: ${c.meta.title}` }),
     ]);
-    card.onclick = () => loadCandidate(c, true);
+    card.onclick = () => loadCandidate(c);
     box.append(card);
   });
 }
@@ -590,8 +602,9 @@ async function animate() {
       let out = form.palette.length ? px.mapToPalette(g, form.palette) : g;
       return px.reduceColors(out, Math.max(form.maxColors, baseColors));
     })(doc);
-    current = { id: null, title: `${current.title || result.title}（${motion.replace(/（.*$/, "")}）`, prompt: current.prompt || form.prompt };
-    editor.setDoc(doc, { keepHistory: true });
+    editor.setDoc(doc, {
+      meta: { id: null, title: `${current.title || result.title}（${motion.replace(/（.*$/, "")}）`, prompt: current.prompt || form.prompt },
+    });
     await saveToHistory(false);
     setStatus(`完了: ${doc.frames.length}コマ（${result.model}・${(result.ms / 1000).toFixed(1)}秒）${warnText(result.warnings)}`);
   } catch (err) {
@@ -687,10 +700,10 @@ async function loadHistory() {
     if (it.frameCount > 1) card.append(el("span", { className: "frames-badge", textContent: `🎞${it.frameCount}` }));
     card.onclick = async () => {
       const full = await api(`/api/history/${it.id}`);
-      current = { id: full.id, title: full.title, prompt: full.prompt };
       if (full.prompt) $("prompt").value = full.prompt;
-      editor.setDoc({ ...full, frames: full.frames || [full.pixels], fps: full.fps || 8 });
-      renderHistoryHighlight();
+      editor.setDoc({ ...full, frames: full.frames || [full.pixels], fps: full.fps || 8 }, {
+        meta: { id: full.id, title: full.title, prompt: full.prompt },
+      });
     };
     del.onclick = async (e) => {
       e.stopPropagation();
@@ -783,6 +796,10 @@ $("providerSelect").addEventListener("change", (e) => {
 });
 $("openSettings").onclick = () => {
   renderSettingsForm();
+  const mode = importMode();
+  $("importMode").replaceChildren(
+    ...Object.entries(IMPORT_MODES).map(([k, label]) => el("option", { value: k, textContent: label, selected: k === mode })),
+  );
   $("settingsDialog").showModal();
 };
 $("saveSettings").addEventListener("click", async (e) => {
@@ -797,6 +814,7 @@ $("saveSettings").addEventListener("click", async (e) => {
     });
     update.providers[f.dataset.provider] = p;
   });
+  storage.set("dotai.importMode", $("importMode").value);
   try {
     settings = await api("/api/settings", { method: "POST", body: update });
     renderBadge();
@@ -812,7 +830,7 @@ renderPaletteSelect();
 renderPaletteSwatches();
 renderTemplateFields(false);
 highlightSizePreset();
-editor.setGrid(px.emptyGrid(32, 32));
+editor.setGrid(px.emptyGrid(32, 32), { keepHistory: false });
 setTool("pen");
 requestAnimationFrame(previewLoop);
 try {

@@ -231,14 +231,28 @@ export function renderSheet(d, cols, scale = 1) {
 }
 
 // PNG画像ファイルを読み込んでグリッド化（インポート用）
-export async function imageToGrid(file, width, height, maxColors) {
+// mode: fit=比率維持で収める / stretch=指定サイズに引き伸ばし / original=元のサイズ
+export async function imageToGrid(file, width, height, maxColors, mode = "fit") {
   const bmp = await createImageBitmap(file);
+  const iw = bmp.width, ih = bmp.height;
+  const src = [0, 0, iw, ih];
+  let dst = [0, 0, width, height];
+  if (mode === "original") {
+    const s = Math.min(1, 128 / Math.max(iw, ih));
+    width = Math.max(1, Math.round(iw * s));
+    height = Math.max(1, Math.round(ih * s));
+    dst = [0, 0, width, height];
+  } else if (mode === "fit") {
+    const s = Math.min(width / iw, height / ih);
+    const dw = Math.max(1, Math.round(iw * s)), dh = Math.max(1, Math.round(ih * s));
+    dst = [Math.floor((width - dw) / 2), Math.floor((height - dh) / 2), dw, dh];
+  }
   const c = document.createElement("canvas");
   c.width = width;
   c.height = height;
   const ctx = c.getContext("2d");
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(bmp, 0, 0, width, height);
+  ctx.drawImage(bmp, ...src, ...dst);
   const data = ctx.getImageData(0, 0, width, height).data;
   const build = (quantize) => {
     const palette = [];

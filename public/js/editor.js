@@ -85,11 +85,13 @@ function splinePoints(pts) {
 const samePoint = (a, b) => a && b && a.x === b.x && a.y === b.y;
 
 export class Editor {
-  constructor(canvas, { onChange, onPick } = {}) {
+  constructor(canvas, { onChange, onPick, getMeta, setMeta } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.onChange = onChange || (() => {});
     this.onPick = onPick || (() => {});
+    this.getMeta = getMeta || (() => null);
+    this.setMeta = setMeta || (() => {});
     this.doc = null;
     this.frame = 0;
     this.tool = "pen";
@@ -115,7 +117,9 @@ export class Editor {
     return this.doc ? this.doc.frames.length : 0;
   }
 
-  setDoc(doc, { keepHistory = false } = {}) {
+  // 絵を差し替える（新規・読み込み・生成など）。差し替え前の状態は Undo で戻せる。
+  // meta は絵に付随する情報（タイトル・履歴IDなど）で、Undo/Redo で絵と一緒に戻る
+  setDoc(doc, { keepHistory = true, meta } = {}) {
     if (keepHistory && this.doc) this.pushUndo();
     else {
       this.undoStack = [];
@@ -123,6 +127,7 @@ export class Editor {
     }
     this.doc = cloneDoc({ fps: 8, ...doc });
     this.frame = 0;
+    if (meta !== undefined) this.setMeta(meta);
     this.clampColor();
     this.fitZoom();
     this.changed();
@@ -210,19 +215,24 @@ export class Editor {
   }
 
   /* ---------- Undo ---------- */
+  snapshot() {
+    return { doc: cloneDoc(this.doc), frame: this.frame, meta: this.getMeta() };
+  }
+
   pushUndo() {
-    this.undoStack.push({ doc: cloneDoc(this.doc), frame: this.frame });
+    this.undoStack.push(this.snapshot());
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
     this.redoStack = [];
   }
 
   restore(from, to) {
     if (!from.length) return;
-    to.push({ doc: cloneDoc(this.doc), frame: this.frame });
+    to.push(this.snapshot());
     const s = from.pop();
     const sizeChanged = s.doc.width !== this.doc.width || s.doc.height !== this.doc.height;
     this.doc = s.doc;
     this.frame = Math.min(s.frame, this.frameCount - 1);
+    this.setMeta(s.meta);
     this.clampColor();
     if (sizeChanged) this.fitZoom();
     this.changed();
