@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "node:child_process";
 import {
-  buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, gridToRows, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
+  buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, findStillFrames, framePoses, buildFramePrompt, mergeFrames, lockRows, buildMotionPlanPrompt, parseMotionPlan, gridToRows, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
 } from "./lib/prompt.js";
 import { callProvider, listModels, PROVIDERS } from "./lib/providers.js";
 import * as store from "./lib/storage.js";
@@ -37,6 +37,35 @@ async function readBody(req) {
 
 const clamp = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : def);
 
+// 2コマ目以降を1コマずつ並列に生成し、ほとんど動いていないコマだけ1回作り直す
+async function animateByFrame(providerName, cfg, params, poses, baseGrid) {
+  const { width, height } = params;
+  const warnings = [];
+  const draw = async (i, retry) => {
+    const p = buildFramePrompt(params, i + 2, poses[i], retry);
+    const g = parseOutput(await callProvider(providerName, cfg, p.system, p.user, p.schema), width, height);
+    return { ...g, warnings: g.warnings.map((w) => `${i + 2}コマ目: ${w}`) };
+  };
+  // 動かさない行は1コマ目のままにしてから、動いているかを判定する
+  const combine = (gs) => lockRows(mergeFrames(gs, baseGrid.palette), baseGrid, params.stillRows);
+  const grids = await Promise.all(poses.map((_, i) => draw(i, false)));
+  let merged = combine(grids);
+
+  const still = findStillFrames(baseGrid, merged);
+  if (still.length) {
+    const retried = [...grids];
+    await Promise.all(still.map(async (n) => (retried[n - 2] = await draw(n - 2, true))));
+    const again = combine(retried);
+    if (findStillFrames(baseGrid, again).length <= still.length) {
+      merged = again;
+      grids.splice(0, grids.length, ...retried);
+    }
+    const left = findStillFrames(baseGrid, merged).length;
+    if (left) warnings.push(`${left}コマが前のコマとほぼ同じでした（作り直しても動きませんでした）。動きの説明を具体的にすると改善することがあります`);
+  }
+  return { title: grids[0].title, width, height, ...merged, poses, stillParts: params.stillParts, warnings: [...grids.flatMap((g) => g.warnings), ...warnings] };
+}
+
 async function handleGenerate(req, res) {
   const body = await readBody(req);
   if (!body.prompt?.trim() && !body.animation) return send(res, 400, { error: "プロンプトを入力してください" });
@@ -55,13 +84,41 @@ async function handleGenerate(req, res) {
   const frameCount = anim ? clamp(anim.frameCount, 2, MAX_FRAMES, 4) : 1;
 
   const params = { ...body, width, height, maxColors, base };
-  const { system, user, schema } = anim
-    ? buildAnimationPrompt({ ...params, motion: anim.motion.trim(), frameCount })
-    : buildPrompt(params);
-
   const started = Date.now();
+  const animParams = anim && { ...params, motion: anim.motion.trim(), frameCount };
+  // 先にコマごとのポーズを、書かれた動きと今の絵に合わせてAIに決めさせる
+  // （失敗したら、用意したキーポーズか、計画なしの一括生成で描かせる）
+  if (anim) {
+    try {
+      const p = buildMotionPlanPrompt(animParams);
+      const plan = parseMotionPlan(await callProvider(providerName, cfg, p.system, p.user, p.schema), height);
+      if (plan.poses.length >= frameCount) {
+        Object.assign(animParams, { plan: plan.poses, stillParts: plan.stillParts, stillRows: plan.stillRows });
+      }
+    } catch {}
+  }
+  // ポーズが決まっていれば、1コマずつ並列に描かせる
+  const poses = anim ? framePoses(animParams.motion, frameCount, animParams.plan) : [];
+  if (poses.length) {
+    const result = await animateByFrame(providerName, cfg, animParams, poses, body.base);
+    return send(res, 200, { ...result, provider: providerName, model: cfg.model, ms: Date.now() - started });
+  }
+  const { system, user, schema } = anim ? buildAnimationPrompt(animParams) : buildPrompt(params);
+
   const text = await callProvider(providerName, cfg, system, user, schema);
-  const result = anim ? parseAnimationOutput(text, width, height, frameCount - 1) : parseOutput(text, width, height);
+  let result = anim ? parseAnimationOutput(text, width, height, frameCount - 1) : parseOutput(text, width, height);
+  // ほとんど動いていないコマがあれば、どのコマかを伝えて1回だけ作り直させる
+  const still = anim ? findStillFrames(body.base, result) : [];
+  if (still.length) {
+    const retry = `frame ${still.join(", ")} almost identical to the previous frame`;
+    const again = buildAnimationPrompt({ ...animParams, retry });
+    const retried = parseAnimationOutput(
+      await callProvider(providerName, cfg, again.system, again.user, again.schema), width, height, frameCount - 1,
+    );
+    if (findStillFrames(body.base, retried).length <= still.length) result = retried;
+    const left = findStillFrames(body.base, result).length;
+    if (left) result.warnings.push(`${left}コマが前のコマとほぼ同じでした（作り直しても動きませんでした）。動きの説明を具体的にすると改善することがあります`);
+  }
   send(res, 200, { ...result, provider: providerName, model: cfg.model, ms: Date.now() - started });
 }
 

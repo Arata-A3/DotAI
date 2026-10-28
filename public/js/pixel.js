@@ -130,6 +130,39 @@ export function flipHorizontal(g) {
   return out;
 }
 
+export function flipVertical(g) {
+  const out = cloneGrid(g);
+  for (let y = 0; y < g.height; y++) {
+    for (let x = 0; x < g.width; x++) out.pixels[y * g.width + x] = g.pixels[(g.height - 1 - y) * g.width + x];
+  }
+  return out;
+}
+
+// 90°回転（clockwise=false で反時計回り）。幅と高さが入れ替わる
+export function rotate90(g, clockwise = true) {
+  const w = g.height, h = g.width;
+  const out = { ...cloneGrid(g), width: w, height: h };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [sx, sy] = clockwise ? [y, g.height - 1 - x] : [g.width - 1 - y, x];
+      out.pixels[y * w + x] = g.pixels[sy * g.width + sx];
+    }
+  }
+  return out;
+}
+
+// (dx, dy) だけずらす。はみ出した分は反対側から出てくる（何度ずらしても絵が欠けない）
+export function shift(g, dx, dy) {
+  const out = cloneGrid(g);
+  const { width: w, height: h } = g;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      out.pixels[(((y + dy) % h) + h) % h * w + (((x + dx) % w) + w) % w] = g.pixels[y * w + x];
+    }
+  }
+  return out;
+}
+
 // 不透明ピクセルの外側（上下左右に接する透明ピクセル）に輪郭線を付ける
 export function addOutline(g, color = null) {
   const out = cloneGrid(g);

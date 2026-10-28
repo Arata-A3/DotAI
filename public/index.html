@@ -72,6 +72,7 @@
               <option value="ゆらゆら揺れる">
               <option value="光る・きらめく">
               <option value="回転する">
+              <option value="作業する（工場で部品を組み立てる）">
               <option value="炎が揺らめく">
               <option value="水面が波打つ">
             </datalist>
@@ -124,10 +125,19 @@
         <div class="menu">
           <button class="menu-btn">加工 ▾</button>
           <div class="menu-list">
-            <label class="menu-item check"><input id="opAllFrames" type="checkbox" checked> 全コマに適用（反転・輪郭・背景）</label>
+            <label class="menu-item check"><input id="opAllFrames" type="checkbox" checked> 全コマに適用（反転・ずらす・輪郭・背景）</label>
             <hr>
             <button data-op="mirror">左半分を右へ反映</button>
             <button data-op="flip">左右反転</button>
+            <button data-op="flipV">上下反転</button>
+            <button data-op="rotateCw" title="幅と高さが入れ替わります（常に全コマ）">右に90°回転</button>
+            <button data-op="rotateCcw" title="幅と高さが入れ替わります（常に全コマ）">左に90°回転</button>
+            <hr>
+            <button data-op="shiftUp" title="はみ出した分は反対側に回ります（矢印キーでも可）">↑ 1pxずらす</button>
+            <button data-op="shiftDown" title="はみ出した分は反対側に回ります（矢印キーでも可）">↓ 1pxずらす</button>
+            <button data-op="shiftLeft" title="はみ出した分は反対側に回ります（矢印キーでも可）">← 1pxずらす</button>
+            <button data-op="shiftRight" title="はみ出した分は反対側に回ります（矢印キーでも可）">→ 1pxずらす</button>
+            <hr>
             <button data-op="outline">輪郭線を追加</button>
             <button data-op="removeBg">背景を透明に</button>
             <hr>

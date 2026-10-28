@@ -157,6 +157,11 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? editor.redo() : editor.undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); editor.redo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const arrows = { arrowup: "shiftUp", arrowdown: "shiftDown", arrowleft: "shiftLeft", arrowright: "shiftRight" };
+  if (arrows[k] && !editor.shape) {
+    e.preventDefault();
+    return runOp(arrows[k]);
+  }
   const map = { b: "pen", e: "eraser", g: "fill", i: "picker", l: "line", c: "curve" };
   if (map[k]) setTool(map[k]);
   if (k === "m") $("mirrorDraw").click();
@@ -258,6 +263,11 @@ const stacked = (fn) => (d) => px.unstackFrames(fn(px.stackFrames(d)), d);
 const FRAME_OPS = {
   mirror: px.mirrorLeftToRight,
   flip: px.flipHorizontal,
+  flipV: px.flipVertical,
+  shiftUp: (g) => px.shift(g, 0, -1),
+  shiftDown: (g) => px.shift(g, 0, 1),
+  shiftLeft: (g) => px.shift(g, -1, 0),
+  shiftRight: (g) => px.shift(g, 1, 0),
   outline: (g) => px.addOutline(g),
   removeBg: px.removeBackground,
 };
@@ -271,19 +281,20 @@ const DOC_OPS = {
     }
     return stacked((g) => px.mapToPalette(g, colors))(d);
   },
+  // 回転は幅と高さが変わるので、コマごとにサイズがずれないよう常に全コマへ適用
+  rotateCw: (d) => px.mapFrames(d, (g) => px.rotate90(g, true)),
+  rotateCcw: (d) => px.mapFrames(d, (g) => px.rotate90(g, false)),
   resize: (d) => {
     const { width, height } = readSize();
     return px.mapFrames(d, (g) => px.resize(g, width, height));
   },
 };
-document.querySelectorAll("[data-op]").forEach((b) => {
-  b.onclick = () => {
-    const op = b.dataset.op;
-    if (DOC_OPS[op]) editor.applyDoc(DOC_OPS[op]);
-    else if ($("opAllFrames").checked) editor.applyDoc((d) => px.mapFrames(d, FRAME_OPS[op]));
-    else editor.apply(FRAME_OPS[op]);
-  };
-});
+function runOp(op) {
+  if (DOC_OPS[op]) editor.applyDoc(DOC_OPS[op]);
+  else if ($("opAllFrames").checked) editor.applyDoc((d) => px.mapFrames(d, FRAME_OPS[op]));
+  else editor.apply(FRAME_OPS[op]);
+}
+document.querySelectorAll("[data-op]").forEach((b) => (b.onclick = () => runOp(b.dataset.op)));
 $("cleanPalette").onclick = () => editor.applyDoc(stacked(px.compactPalette));
 
 $("newCanvas").onclick = () => {
@@ -663,7 +674,10 @@ async function animate() {
       meta: { id: null, title: `${current.title || result.title}（${motion.replace(/（.*$/, "")}）`, prompt: current.prompt || form.prompt },
     });
     await saveToHistory(false);
-    setStatus(`完了: ${doc.frames.length}コマ（${result.model}・${(result.ms / 1000).toFixed(1)}秒）${warnText(result.warnings)}`);
+    // AIが決めた各コマのポーズも見せる（思った動きと違うときに、どこがずれたか分かるように）
+    const posesText = (result.stillParts ? `\n動かさない部分: ${result.stillParts}` : "") +
+      (result.poses?.length ? "\n" + result.poses.map((p, i) => `${i + 2}コマ目: ${p}`).join("\n") : "");
+    setStatus(`完了: ${doc.frames.length}コマ（${result.model}・${(result.ms / 1000).toFixed(1)}秒）${posesText}${warnText(result.warnings)}`);
   } catch (err) {
     setStatus(err.message, "error");
   }
