@@ -6,7 +6,7 @@ import { exec } from "node:child_process";
 import {
   buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, gridToRows, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
 } from "./lib/prompt.js";
-import { callProvider, PROVIDERS } from "./lib/providers.js";
+import { callProvider, listOllamaModels, PROVIDERS } from "./lib/providers.js";
 import * as store from "./lib/storage.js";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -85,6 +85,12 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/settings") {
       if (req.method === "GET") return send(res, 200, store.publicSettings(await store.loadSettings()));
       if (req.method === "POST") return send(res, 200, store.publicSettings(await store.saveSettings(await readBody(req))));
+    }
+
+    if (p === "/api/ollama-models" && req.method === "GET") {
+      const settings = await store.loadSettings();
+      const baseUrl = url.searchParams.get("baseUrl") || settings.providers.ollama.baseUrl;
+      return send(res, 200, await listOllamaModels(baseUrl));
     }
 
     if (p === "/api/history") {

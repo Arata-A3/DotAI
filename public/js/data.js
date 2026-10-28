@@ -17,58 +17,59 @@ export const PALETTES = {
   custom: { label: "カスタム（自分で編集）", colors: ["#000000", "#ffffff", "#ff0000", "#00ff00", "#0000ff"] },
 };
 
-// fields の {key} が text に差し込まれる。settings はテンプレ選択時に画面へ反映される推奨設定
+// parts は順に連結される。{key} を含む部分は、その項目が空なら省かれる。
+// 配列にすると「全項目が埋まっている最初の候補」が使われる。placeholder は入力例の表示のみ（プロンプトには入らない）
 export const TEMPLATES = [
   {
     id: "free", label: "自由入力",
-    fields: [], text: "",
+    fields: [], parts: [],
     settings: {},
   },
   {
     id: "character", label: "キャラクター",
     fields: [
-      { key: "who", label: "キャラ", placeholder: "剣を持った勇者" },
-      { key: "dir", label: "向き", placeholder: "正面", options: ["正面", "右", "左", "後ろ", "斜め前"] },
-      { key: "extra", label: "特徴", placeholder: "青いマント、金髪" },
+      { key: "who", label: "キャラ", placeholder: "例: 剣を持った勇者" },
+      { key: "dir", label: "向き", placeholder: "例: 正面", options: ["正面", "右", "左", "後ろ", "斜め前"] },
+      { key: "extra", label: "特徴（任意）", placeholder: "例: 青いマント、金髪" },
     ],
-    text: "ゲーム用のキャラクタースプライト。{who}、{dir}向きの全身立ち絵。{extra}",
+    parts: ["ゲーム用のキャラクタースプライト。", "{who}、", "{dir}向きの", "全身立ち絵。", "{extra}。"],
     settings: { size: 32, transparent: true, outline: true, tileable: false },
   },
   {
     id: "monster", label: "モンスター",
     fields: [
-      { key: "who", label: "モンスター", placeholder: "スライム" },
-      { key: "color", label: "色", placeholder: "緑色" },
-      { key: "extra", label: "特徴", placeholder: "王冠をかぶっている" },
+      { key: "who", label: "モンスター", placeholder: "例: スライム" },
+      { key: "color", label: "色（任意）", placeholder: "例: 緑色" },
+      { key: "extra", label: "特徴（任意）", placeholder: "例: 王冠をかぶっている" },
     ],
-    text: "RPGの敵モンスターのスプライト。{color}の{who}。{extra}",
+    parts: ["RPGの敵モンスターのスプライト。", ["{color}の{who}。", "{who}。", "{color}のモンスター。"], "{extra}。"],
     settings: { size: 32, transparent: true, outline: true, tileable: false },
   },
   {
     id: "item", label: "アイテム・アイコン",
     fields: [
-      { key: "item", label: "アイテム", placeholder: "回復ポーション" },
-      { key: "extra", label: "特徴", placeholder: "赤い液体、ガラス瓶" },
+      { key: "item", label: "アイテム", placeholder: "例: 回復ポーション" },
+      { key: "extra", label: "特徴（任意）", placeholder: "例: 赤い液体、ガラス瓶" },
     ],
-    text: "ゲームのアイテムアイコン。{item}。{extra}。中央に大きく配置。",
+    parts: ["ゲームのアイテムアイコン。", "{item}。", "{extra}。", "中央に大きく配置。"],
     settings: { size: 16, transparent: true, outline: true, tileable: false, symmetry: false },
   },
   {
     id: "tile", label: "マップタイル",
     fields: [
-      { key: "ground", label: "地形", placeholder: "草原", options: ["草原", "土", "石畳", "レンガの壁", "水面", "砂", "雪", "木の床"] },
-      { key: "extra", label: "特徴", placeholder: "小さな花が点在" },
+      { key: "ground", label: "地形", placeholder: "例: 草原", options: ["草原", "土", "石畳", "レンガの壁", "水面", "砂", "雪", "木の床"] },
+      { key: "extra", label: "特徴（任意）", placeholder: "例: 小さな花が点在" },
     ],
-    text: "上から見下ろし型RPGのマップタイル。{ground}。{extra}",
+    parts: ["上から見下ろし型RPGのマップタイル。", "{ground}。", "{extra}。"],
     settings: { size: 16, transparent: false, outline: false, tileable: true, symmetry: false },
   },
   {
     id: "pattern", label: "模様・パターン",
     fields: [
-      { key: "motif", label: "モチーフ", placeholder: "和風の青海波" },
-      { key: "extra", label: "特徴", placeholder: "藍色と白" },
+      { key: "motif", label: "モチーフ", placeholder: "例: 和風の青海波" },
+      { key: "extra", label: "特徴（任意）", placeholder: "例: 藍色と白" },
     ],
-    text: "繰り返し可能な模様パターン。{motif}。{extra}",
+    parts: ["繰り返し可能な模様パターン。", "{motif}。", "{extra}。"],
     settings: { size: 16, transparent: false, outline: false, tileable: true },
   },
 ];

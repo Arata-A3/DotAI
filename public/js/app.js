@@ -93,6 +93,7 @@ $("addColor").onclick = () => {
 };
 
 function setTool(t) {
+  editor.cancelShape();
   editor.tool = t;
   document.querySelectorAll("#tools button").forEach((b) => b.classList.toggle("active", b.dataset.tool === t));
 }
@@ -114,17 +115,82 @@ $("undo").onclick = () => editor.undo();
 $("redo").onclick = () => editor.redo();
 
 document.addEventListener("keydown", (e) => {
-  if (e.target.matches("input, textarea, select")) return;
+  if (e.target.matches?.("input, textarea, select")) return;
   const k = e.key.toLowerCase();
+  if (k === "escape") {
+    editor.cancelShape();
+    closeMenus();
+    return;
+  }
+  if (editor.shape && k === "enter") return editor.finishShape();
+  if (editor.shape && k === "backspace") {
+    e.preventDefault();
+    return editor.removeShapePoint();
+  }
   if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? editor.redo() : editor.undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); editor.redo(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const map = { b: "pen", e: "eraser", g: "fill", i: "picker" };
+  const map = { b: "pen", e: "eraser", g: "fill", i: "picker", l: "line", c: "curve" };
   if (map[k]) setTool(map[k]);
   if (k === "m") $("mirrorDraw").click();
   if (k === ",") editor.setFrame(editor.frame - 1);
   if (k === ".") editor.setFrame(editor.frame + 1);
 });
+
+/* ---------- メニュー ---------- */
+function closeMenus() {
+  document.querySelectorAll(".menu.open").forEach((m) => m.classList.remove("open"));
+}
+document.querySelectorAll(".menu").forEach((m) => {
+  m.querySelector(".menu-btn").onclick = (e) => {
+    e.stopPropagation();
+    const open = !m.classList.contains("open");
+    closeMenus();
+    m.classList.toggle("open", open);
+  };
+  // 項目を選んだら閉じる（チェックボックスは除く）
+  m.querySelector(".menu-list").addEventListener("click", (e) => {
+    if (e.target.closest("button, .menu-item:not(.check)")) closeMenus();
+  });
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".menu")) closeMenus();
+});
+
+/* ---------- マウスオーバー説明（要素の上側に出してカーソルで隠れないようにする） ---------- */
+const tip = $("tooltip");
+let tipTarget = null;
+let tipTimer = null;
+function hideTip() {
+  clearTimeout(tipTimer);
+  tip.hidden = true;
+  tipTarget = null;
+}
+document.addEventListener("mouseover", (e) => {
+  const t = e.target.closest("[title], [data-tip]");
+  if (t === tipTarget) return;
+  hideTip();
+  if (!t) return;
+  // ブラウザ標準のツールチップ（カーソルの下に出る）を止めて自前で表示する
+  if (t.hasAttribute("title")) {
+    t.dataset.tip = t.title;
+    t.removeAttribute("title");
+  }
+  if (!t.dataset.tip) return;
+  tipTarget = t;
+  tipTimer = setTimeout(() => {
+    tip.textContent = t.dataset.tip;
+    tip.hidden = false;
+    const r = t.getBoundingClientRect();
+    const tr = tip.getBoundingClientRect();
+    let top = r.top - tr.height - 6;
+    if (top < 4) top = r.bottom + 6;
+    const left = Math.min(window.innerWidth - tr.width - 4, Math.max(4, r.left + r.width / 2 - tr.width / 2));
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  }, 350);
+});
+document.addEventListener("mousedown", hideTip);
 
 /* ---------- コマ ---------- */
 function renderFrameStrip() {
@@ -285,14 +351,18 @@ function renderTemplateFields(applySettings) {
   composePrompt();
 }
 
+// 空欄の項目を含む部分は省く（入力例 placeholder はプロンプトに入れない）
 function composePrompt() {
   const t = currentTemplate();
   if (!t.fields.length) return;
-  let text = t.text;
-  document.querySelectorAll("#templateFields input").forEach((i) => {
-    text = text.replaceAll(`{${i.dataset.key}}`, i.value.trim() || i.placeholder);
-  });
-  $("prompt").value = text.replace(/。+/g, "。");
+  const values = {};
+  document.querySelectorAll("#templateFields input").forEach((i) => (values[i.dataset.key] = i.value.trim()));
+  const fill = (part) => {
+    const keys = [...part.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+    return keys.every((k) => values[k]) ? part.replace(/\{(\w+)\}/g, (_, k) => values[k]) : null;
+  };
+  const text = t.parts.map((p) => (Array.isArray(p) ? p.map(fill).find((v) => v !== null) : fill(p)) ?? "").join("");
+  $("prompt").value = text.replace(/、。/g, "。").replace(/。+/g, "。");
 }
 
 $("template").addEventListener("change", () => renderTemplateFields(true));
@@ -666,7 +736,40 @@ function renderSettingsForm() {
     } else {
       form.append(el("label", { textContent: "サーバーURL" }, [el("input", { type: "text", name: "baseUrl", value: p.baseUrl || "" })]));
     }
-    form.append(el("label", { textContent: "モデル名" }, [el("input", { type: "text", name: "model", value: p.model })]));
+    // モデルは一覧から選ぶ。一覧にないものは「その他（手入力）」
+    const modelSel = el("select", { name: "modelSelect" });
+    const custom = el("input", { type: "text", name: "model", value: p.model, placeholder: "モデル名を入力" });
+    const fillModels = (models) => {
+      const known = models.some((m) => m.id === custom.value);
+      modelSel.replaceChildren(
+        ...models.map((m) => el("option", { value: m.id, textContent: m.label, selected: m.id === custom.value })),
+        el("option", { value: "__custom", textContent: "その他（手入力）", selected: !known }),
+      );
+      custom.hidden = known;
+    };
+    modelSel.onchange = () => {
+      custom.hidden = modelSel.value !== "__custom";
+      if (modelSel.value === "__custom") custom.focus();
+      else custom.value = modelSel.value;
+    };
+    fillModels(p.models);
+    const modelLabel = el("label", { textContent: "モデル" }, [modelSel, custom]);
+    form.append(modelLabel);
+    if (k === "ollama") {
+      const note = el("div", { className: "hint" });
+      modelLabel.append(note);
+      const load = () => {
+        const baseUrl = form.querySelector('[name="baseUrl"]').value;
+        api(`/api/ollama-models?baseUrl=${encodeURIComponent(baseUrl)}`)
+          .then((models) => {
+            fillModels(models);
+            note.textContent = models.length ? "" : "インストール済みのモデルがありません（ollama pull で追加）";
+          })
+          .catch(() => (note.textContent = "Ollama に接続できません。起動しているか確認してください"));
+      };
+      form.querySelector('[name="baseUrl"]').addEventListener("change", load);
+      load();
+    }
     if (k === "claude") {
       const sel = el("select", { name: "effort" }, ["low", "medium", "high", "xhigh", "max"].map((v) =>
         el("option", { value: v, textContent: v, selected: v === (p.effort || "medium") })));
@@ -688,6 +791,7 @@ $("saveSettings").addEventListener("click", async (e) => {
   document.querySelectorAll(".provider-form").forEach((f) => {
     const p = {};
     f.querySelectorAll("input, select").forEach((i) => {
+      if (i.name === "modelSelect") return;
       if (i.name === "apiKey") p.apiKey = i.dataset.clear ? null : i.value;
       else p[i.name] = i.value;
     });
