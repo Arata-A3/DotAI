@@ -1,0 +1,16 @@
+{
+  "name": "dotai",
+  "version": "1.0.0",
+  "description": "プロンプトからドット絵を生成・編集するローカルWebアプリ",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0"
+  }
+}
