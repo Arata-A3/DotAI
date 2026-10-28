@@ -98,7 +98,9 @@ button.wide { width: 100%; padding: 8px; margin-top: 4px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .toolbar .group, .frames-bar .group { display: flex; gap: 2px; }
 .toolbar .group button { font-size: 14px; padding: 4px 10px; }
-.toolbar .info { color: var(--muted); font-size: 13px; margin-left: auto; }
+.toolbar .title-field { margin: 0 0 0 auto; font-size: 13px; }
+.toolbar .title-field input { width: 160px; padding: 3px 8px; }
+.toolbar .info { color: var(--muted); font-size: 13px; }
 
 /* ドロップダウンメニュー */
 .menu { position: relative; }

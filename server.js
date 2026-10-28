@@ -106,6 +106,10 @@ const server = http.createServer(async (req, res) => {
     if (m) {
       if (m[2]) return await serveStatic(res, path.join(store.HISTORY_DIR, `${m[1]}.png`));
       if (req.method === "GET") return send(res, 200, await store.getHistory(m[1]));
+      if (req.method === "PATCH") {
+        const { title } = await readBody(req);
+        return send(res, 200, await store.renameHistory(m[1], String(title ?? "").slice(0, 60)));
+      }
       if (req.method === "DELETE") {
         await store.deleteHistory(m[1]);
         return send(res, 200, { ok: true });

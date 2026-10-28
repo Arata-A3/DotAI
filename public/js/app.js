@@ -58,11 +58,27 @@ const editor = new Editor($("canvas"), {
 function updateInfo() {
   const d = editor.doc;
   if (!d) return;
-  const parts = [`${d.width}×${d.height}`, `${d.palette.length}色`, `×${editor.zoom}`];
+  const parts = [`${d.width}×${d.height}`, `${d.palette.length}色`, `表示 ×${editor.zoom}`];
   if (d.frames.length > 1) parts.push(`コマ ${editor.frame + 1}/${d.frames.length}`);
-  if (current.title) parts.push(current.title);
   $("canvasInfo").textContent = parts.join(" / ");
+  // 入力中は書き換えない
+  if (document.activeElement !== $("titleInput")) $("titleInput").value = current.title || "";
 }
+
+// 名前の変更。履歴に保存済みなら履歴の名前だけ変える（絵の内容は上書きしない）
+$("titleInput").addEventListener("change", async () => {
+  current.title = $("titleInput").value.trim();
+  if (!current.id) return;
+  try {
+    await api(`/api/history/${current.id}`, { method: "PATCH", body: { title: current.title } });
+    await loadHistory();
+  } catch (err) {
+    setStatus(err.message, "error");
+  }
+});
+$("titleInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") e.target.blur();
+});
 
 function renderEditorPalette() {
   const g = editor.grid;
