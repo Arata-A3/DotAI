@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { exec } from "node:child_process";
 import {
-  buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, findStillFrames, framePoses, buildFramePrompt, mergeFrames, lockRows, buildMotionPlanPrompt, parseMotionPlan, gridToRows, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
+  buildPrompt, buildAnimationPrompt, parseOutput, parseAnimationOutput, findStillFrames, framePoses, buildFramePrompt, mergeFrames, lockRows, buildMotionPlanPrompt, parseMotionPlan, gridToRows, frameDamage, patchBrokenRows, clearFilledBackground, MAX_SIZE, MAX_COLORS, MAX_FRAMES,
 } from "./lib/prompt.js";
 import { callProvider, listModels, PROVIDERS } from "./lib/providers.js";
 import * as store from "./lib/storage.js";
@@ -41,10 +41,22 @@ const clamp = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.min(hi, Math.max(l
 async function animateByFrame(providerName, cfg, params, poses, baseGrid) {
   const { width, height } = params;
   const warnings = [];
-  const draw = async (i, retry) => {
+  const drawOnce = async (i, retry) => {
     const p = buildFramePrompt(params, i + 2, poses[i], retry);
     const g = parseOutput(await callProvider(providerName, cfg, p.system, p.user, p.schema), width, height);
-    return { ...g, warnings: g.warnings.map((w) => `${i + 2}コマ目: ${w}`) };
+    return clearFilledBackground(g, baseGrid);
+  };
+  // 行が足りない・幅がずれた・背景が塗られたなど出力が崩れたコマは1回だけ描き直させ、崩れの少ない方を使う。
+  // それでも崩れた行は、透明の穴にせず1コマ目の行で埋める
+  const draw = async (i, retry) => {
+    let g = await drawOnce(i, retry);
+    if (frameDamage(g, baseGrid) > 2) {
+      const again = await drawOnce(i, retry).catch(() => null);
+      if (again && frameDamage(again, baseGrid) < frameDamage(g, baseGrid)) g = again;
+    }
+    const notes = g.warnings.map((w) => `${i + 2}コマ目: ${w}`);
+    if (g.brokenRows.length) notes.push(`${i + 2}コマ目: 崩れた${g.brokenRows.length}行を1コマ目の絵で補いました`);
+    return { ...patchBrokenRows(g, baseGrid), warnings: notes };
   };
   // 動かさない行は1コマ目のままにしてから、動いているかを判定する
   const combine = (gs) => lockRows(mergeFrames(gs, baseGrid.palette), baseGrid, params.stillRows);

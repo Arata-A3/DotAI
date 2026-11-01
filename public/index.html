@@ -18,7 +18,12 @@
   <main>
     <!-- 左: 生成設定 -->
     <section class="panel left" id="leftPanel">
+      <div class="mode-tabs" role="tablist">
+        <button type="button" role="tab" data-mode="still">🖼 静止画</button>
+        <button type="button" role="tab" data-mode="anim">🎞 アニメ</button>
+      </div>
       <div class="left-scroll">
+        <div id="stillPane">
         <details class="sec" open>
           <summary>何を描く？</summary>
           <label>テンプレート
@@ -58,36 +63,23 @@
           </div>
         </details>
 
-        <details class="sec">
-          <summary>アニメーション</summary>
-          <label>動き
-            <input id="motion" type="text" list="motionPresets" placeholder="例: 歩く（足を交互に出す）">
-            <datalist id="motionPresets">
-              <option value="待機（呼吸で体が少し上下する）">
-              <option value="歩く（足を交互に出す）">
-              <option value="走る">
-              <option value="ジャンプ（しゃがむ→跳ぶ→着地）">
-              <option value="攻撃（武器を振る）">
-              <option value="ダメージを受けてのけぞる">
-              <option value="ゆらゆら揺れる">
-              <option value="光る・きらめく">
-              <option value="回転する">
-              <option value="作業する（工場で部品を組み立てる）">
-              <option value="炎が揺らめく">
-              <option value="水面が波打つ">
-            </datalist>
+        </div>
+
+        <div id="animPane" class="anim-pane" hidden>
+          <p class="hint anim-note">キャンバスの今の絵を1コマ目にして、続きのコマをAIが作ります。今あるコマは置き換わります（Ctrl+Zで戻せます）。</p>
+          <div class="field-title">動き <span class="hint">選ぶと下の欄に入ります</span></div>
+          <div id="motionPresets" class="chips"></div>
+          <label>動きの説明 <span class="hint">自由に書き換え・追記できます</span>
+            <textarea id="motion" rows="3" placeholder="例: 歩く（足を交互に出す）"></textarea>
           </label>
-          <label class="inline">コマ数
-            <select id="frameCount">
-              <option>2</option><option>3</option><option selected>4</option><option>6</option><option>8</option>
-            </select>
-          </label>
-          <button id="animate" class="wide" title="キャンバスの今のコマを1コマ目として、残りのコマをAIが作ります。今あるコマは置き換わります（Ctrl+Zで戻せます）">🎞 今の絵からアニメを生成</button>
-        </details>
+          <div class="field-title">コマ数</div>
+          <div id="frameCountChips" class="chips"></div>
+          <input id="frameCount" type="hidden" value="4">
+        </div>
       </div>
 
       <div class="left-footer">
-        <div class="row">
+        <div class="row" id="stillOptions">
           <label class="inline">案の数
             <select id="variations" title="複数案は並列で生成します。案の数だけ料金がかかります">
               <option selected>1</option><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option>

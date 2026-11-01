@@ -491,6 +491,73 @@ function pickColor(initial, cb) {
 $("palette").addEventListener("change", renderPaletteSwatches);
 $("maxColors").addEventListener("input", () => ($("maxColorsOut").textContent = $("maxColors").value));
 
+/* ---------- 静止画／アニメの切り替え ---------- */
+// [ボタンの表示名, 入力欄に入る説明]
+const MOTION_PRESETS = [
+  ["待機", "待機（呼吸で体が少し上下する）"],
+  ["歩く", "歩く（足を交互に出す）"],
+  ["走る", "走る（腕を振り、足を大きく交互に出す）"],
+  ["ジャンプ", "ジャンプ（しゃがむ→跳ぶ→着地）"],
+  ["攻撃", "攻撃（武器を振る）"],
+  ["ダメージ", "ダメージを受けてのけぞる"],
+  ["揺れる", "ゆらゆら揺れる"],
+  ["光る", "光る・きらめく"],
+  ["回転", "回転する"],
+  ["作業", "作業する（工場で部品を組み立てる）"],
+  ["炎", "炎が揺らめく"],
+  ["水面", "水面が波打つ"],
+];
+const FRAME_COUNTS = [2, 3, 4, 6, 8];
+const MODE_KEY = "dotai.mode";
+let mode = "still";
+
+function setMode(m) {
+  mode = m === "anim" ? "anim" : "still";
+  storage.set(MODE_KEY, mode);
+  document.querySelectorAll(".mode-tabs button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+    b.setAttribute("aria-selected", b.dataset.mode === mode);
+  });
+  $("stillPane").hidden = mode !== "still";
+  $("animPane").hidden = mode !== "anim";
+  $("stillOptions").hidden = mode !== "still";
+  $("generate").textContent = mode === "anim" ? "🎞 アニメを生成する" : "✨ 生成する";
+}
+document.querySelectorAll(".mode-tabs button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+
+// 入力欄の内容と一致する候補ボタンを強調する
+function highlightMotion() {
+  const v = $("motion").value.trim();
+  document.querySelectorAll("#motionPresets button").forEach((b) => b.classList.toggle("active", b.dataset.value === v));
+}
+$("motionPresets").append(
+  ...MOTION_PRESETS.map(([label, value]) => {
+    const b = el("button", { type: "button", textContent: label, title: value, dataset: { value } });
+    b.onclick = () => {
+      $("motion").value = value;
+      highlightMotion();
+      saveForm();
+    };
+    return b;
+  }),
+);
+$("motion").addEventListener("input", highlightMotion);
+
+function setFrameCount(n) {
+  $("frameCount").value = n;
+  document.querySelectorAll("#frameCountChips button").forEach((b) => b.classList.toggle("active", +b.dataset.n === +n));
+}
+$("frameCountChips").append(
+  ...FRAME_COUNTS.map((n) => {
+    const b = el("button", { type: "button", textContent: `${n}コマ`, dataset: { n } });
+    b.onclick = () => {
+      setFrameCount(n);
+      saveForm();
+    };
+    return b;
+  }),
+);
+
 /* ---------- 入力内容の保存・復元（再起動してもプロンプト等が消えないように） ---------- */
 const FORM_KEY = "dotai.form";
 const FORM_IDS = [
@@ -556,7 +623,7 @@ function postProcess(g, form) {
   return out;
 }
 
-const GEN_BUTTONS = ["generate", "refine", "animate"];
+const GEN_BUTTONS = ["generate", "refine"];
 // 生成中はボタンを無効化し、経過時間を表示する
 async function busy(label, task) {
   GEN_BUTTONS.forEach((id) => ($(id).disabled = true));
@@ -621,7 +688,7 @@ async function generate(refine) {
   const errText = errors.length ? `\n✖ ${errors.length}案は失敗: ${errors[0]}` : "";
   setStatus(`完了: ${ok}案（${model}）${count > 1 ? "\n右の「候補」から選べます" : ""}${errText}${warnText([...new Set(warnings)])}`, errors.length ? "error" : "");
 }
-$("generate").onclick = () => generate(false);
+$("generate").onclick = () => (mode === "anim" ? animate() : generate(false));
 $("refine").onclick = () => generate(true);
 
 function loadCandidate(c) {
@@ -644,7 +711,7 @@ function renderCandidates() {
 
 async function animate() {
   const motion = $("motion").value.trim();
-  if (!motion) return setStatus("動きを入力してください（例: 歩く）", "error");
+  if (!motion) return setStatus("動きを選ぶか入力してください（例: 歩く）", "error");
   const base = editor.grid;
   if (!base.pixels.some((v) => v >= 0)) return setStatus("先に絵を生成するか描いてから実行してください", "error");
   const form = readForm();
@@ -682,7 +749,6 @@ async function animate() {
     setStatus(err.message, "error");
   }
 }
-$("animate").onclick = animate;
 
 /* ---------- 書き出し・履歴 ---------- */
 function download(blob, name) {
@@ -808,7 +874,11 @@ function renderSettingsForm() {
     const form = el("div", { className: "provider-form", dataset: { provider: k } });
     form.hidden = k !== settings.provider;
     form.append(el("h3", { textContent: p.label }));
-    if (k !== "ollama") {
+    if (k === "claudecode") {
+      form.append(el("div", { className: "hint", textContent:
+        "このPCでログイン済みの Claude Code（claude コマンド）を使います。APIキーは不要で、Pro/Max の利用枠を使います。" +
+        "1回ごとにコマンドを起動するため、APIより少し時間がかかります。" }));
+    } else if (k !== "ollama") {
       const state = p.hasKey ? "設定済み（変更する場合のみ入力）" : p.hasEnvKey ? "環境変数のキーを使用中" : "未設定";
       const keyInput = el("input", { type: "password", name: "apiKey", placeholder: state, autocomplete: "off" });
       form.append(el("label", { textContent: "APIキー " }, [el("span", { className: "key-state", textContent: `（${state}）` }), keyInput]));
@@ -858,7 +928,7 @@ function renderSettingsForm() {
     };
     form.querySelector('[name="baseUrl"]')?.addEventListener("change", loadModels);
     loadModels();
-    if (k === "claude") {
+    if (k === "claude" || k === "claudecode") {
       const sel = el("select", { name: "effort" }, ["low", "medium", "high", "xhigh", "max"].map((v) =>
         el("option", { value: v, textContent: v, selected: v === (p.effort || "medium") })));
       form.append(el("label", { textContent: "思考の深さ (effort)：高いほど丁寧だが遅く高価" }, [sel]));
@@ -906,6 +976,9 @@ renderPaletteSwatches();
 renderTemplateFields(false);
 restoreForm();
 highlightSizePreset();
+setFrameCount(FRAME_COUNTS.includes(+$("frameCount").value) ? +$("frameCount").value : 4);
+highlightMotion();
+setMode(storage.get(MODE_KEY, "still"));
 // 左パネルの入力が変わるたびに保存（サイズのプリセットボタン等はクリックで値が変わるので click も見る）
 for (const type of ["input", "change", "click"]) $("leftPanel").addEventListener(type, saveForm);
 editor.setGrid(px.emptyGrid(32, 32), { keepHistory: false });
@@ -915,7 +988,7 @@ try {
   settings = await api("/api/settings");
   renderBadge();
   const p = settings.providers[settings.provider];
-  if (settings.provider !== "ollama" && !p.hasKey && !p.hasEnvKey) setStatus("右上の「⚙ 設定」からAPIキーを登録してください");
+  if (!["ollama", "claudecode"].includes(settings.provider) && !p.hasKey && !p.hasEnvKey) setStatus("右上の「⚙ 設定」からAPIキーを登録してください");
 } catch (err) {
   setStatus("サーバーに接続できません: " + err.message, "error");
 }
