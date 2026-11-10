@@ -37,6 +37,21 @@ async function readBody(req) {
 
 const clamp = (v, lo, hi, def) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : def);
 
+// コマ数が多いとき（16コマなど）に一度に呼びすぎて利用上限・混雑エラーにならないよう、同時に描かせる数を絞る
+const FRAME_CONCURRENCY = 4;
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 // 2コマ目以降を1コマずつ並列に生成し、ほとんど動いていないコマだけ1回作り直す
 async function animateByFrame(providerName, cfg, params, poses, baseGrid) {
   const { width, height } = params;
@@ -60,13 +75,13 @@ async function animateByFrame(providerName, cfg, params, poses, baseGrid) {
   };
   // 動かさない行は1コマ目のままにしてから、動いているかを判定する
   const combine = (gs) => lockRows(mergeFrames(gs, baseGrid.palette), baseGrid, params.stillRows);
-  const grids = await Promise.all(poses.map((_, i) => draw(i, false)));
+  const grids = await mapLimit(poses, FRAME_CONCURRENCY, (_, i) => draw(i, false));
   let merged = combine(grids);
 
   const still = findStillFrames(baseGrid, merged);
   if (still.length) {
     const retried = [...grids];
-    await Promise.all(still.map(async (n) => (retried[n - 2] = await draw(n - 2, true))));
+    await mapLimit(still, FRAME_CONCURRENCY, async (n) => (retried[n - 2] = await draw(n - 2, true)));
     const again = combine(retried);
     if (findStillFrames(baseGrid, again).length <= still.length) {
       merged = again;

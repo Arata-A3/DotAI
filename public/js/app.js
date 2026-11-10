@@ -507,7 +507,7 @@ const MOTION_PRESETS = [
   ["炎", "炎が揺らめく"],
   ["水面", "水面が波打つ"],
 ];
-const FRAME_COUNTS = [2, 3, 4, 6, 8];
+const FRAME_COUNTS = [2, 3, 4, 6, 8, 16];
 const MODE_KEY = "dotai.mode";
 let mode = "still";
 
